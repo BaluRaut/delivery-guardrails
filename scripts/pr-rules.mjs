@@ -9,17 +9,18 @@ import { pathToFileURL } from 'node:url'
 import { clockSettings, ageInHours, formatHours, github } from './lib.mjs'
 
 const round = (hours) => Math.round(hours * 10) / 10
+const linesText = (n) => `${n} ${n === 1 ? 'line' : 'lines'} changed`
 
 export const DEFAULT_IGNORE = String.raw`(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$|\.snap$|(^|/)generated/`
 
 /** Decides both checks for one pull request. */
 export function evaluate({ lines, hours, labels }, { maxLines, maxAgeHours, clock }) {
   const unit = clock === 'calendar' ? 'hours' : 'working hours'
-  const size = { state: 'success', description: `${lines} lines changed (limit ${maxLines})` }
+  const size = { state: 'success', description: `${linesText(lines)} (limit ${maxLines})` }
   if (lines > maxLines) {
     size.description = labels.has('size-exception')
-      ? `${lines} lines changed; allowed by the size-exception label`
-      : `${lines} lines changed. Split it into PRs under ${maxLines} lines.`
+      ? `${linesText(lines)}; allowed by the size-exception label`
+      : `${linesText(lines)}. Split it into PRs under ${maxLines} lines.`
     if (!labels.has('size-exception')) size.state = 'failure'
   }
   const age = { state: 'success', description: `${round(hours)} ${unit} since work started (limit ${maxAgeHours})` }
