@@ -14,6 +14,7 @@ test('size: over the limit fails, the label allows it', () => {
   assert.equal(allowed.state, 'success')
   assert.match(allowed.description, /allowed by the size-exception label/)
   assert.equal(evaluate({ lines: 500, hours: 1, labels: new Set() }, limits).size.state, 'success')
+  assert.equal(evaluate({ lines: 1, hours: 1, labels: new Set() }, limits).size.description, '1 line changed (limit 500)')
 })
 
 test('age: at the limit fails, the label allows it, descriptions fit GitHub', () => {
