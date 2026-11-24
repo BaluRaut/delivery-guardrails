@@ -184,6 +184,21 @@ The scripts have no dependencies and use only the GitHub REST API, following eve
 - Only the first 250 commits of a pull request are read for the age. It's unusual to hit this limit.
 - Scheduled runs can start a few minutes late. In public repos, GitHub pauses schedules after 60 days with no activity.
 
+## Tested
+
+v2 was tested on GitHub in this repo on 24 November 2026; the test pull requests, deployments and settings were removed afterwards.
+
+| Test | Result |
+|---|---|
+| This release's own pull request, 1,282 lines | `pr-rules/size` failed; with `size-exception` it passed: "1282 lines changed; allowed by the size-exception label" |
+| Commit dated Friday 16:00 IST, checked Tuesday 12:37 IST | `pr-rules/age` failed at **14.6 working hours**: Friday 2h + Monday 9h + Tuesday 3.6h |
+| Delivery alerts, limits set to 0, UAT on an old commit with a newer failed deployment, plus a second repo with no UAT records | One message listing both open pull requests under "waiting for a first review", 3 merged pull requests not on UAT, the failed deployment, and the repo with no records |
+| 23 automated tests, run by CI on every pull request | Pass. They cover the clock (weekends, holidays, a daylight-saving change), the checks, the four stages, paging through 151 files, and Slack messages and errors against a fake Slack server |
+
+The earlier version showed the ruleset blocking a failing pull request from merging. v2 posts the same two checks.
+
+A real Slack webhook hasn't been tested yet, because this repo has none. Add your webhook and click **Run workflow** once to confirm.
+
 ## Development
 
 ```text
