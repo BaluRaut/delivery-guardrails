@@ -214,7 +214,7 @@ footer{border-top:1px solid var(--line);padding-top:20px;font-size:14px;color:va
 <section aria-labelledby="looks">
   <span class="eyebrow">In practice</span>
   <h2 id="looks">What a blocked pull request looks like</h2>
-  <p>These are the real messages from the test run. The reason is in the check, so the author knows what to fix.</p>
+  <p>The checks post messages like these, so the author knows exactly what to fix.</p>
   <div class="mergebox" role="img" aria-label="Example merge box: the size check failed with 600 lines changed, the age check passed, and merging is blocked">
     <div class="mb-head"><span class="x" aria-hidden="true">✕</span><div><b>Merging is blocked</b><span>A required status check has failed.</span></div></div>
     <div class="check"><span class="dot fail" aria-hidden="true">✕</span><code>pr-rules/size</code><span class="desc">600 lines changed. Split it into PRs under 500 lines.</span><span class="req">Required</span></div>
@@ -376,21 +376,19 @@ gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=success</code></p
 <section aria-labelledby="tested">
   <span class="eyebrow">Tested</span>
   <h2 id="tested">What was checked</h2>
-  <p>Both workflows were run in the repo on 24 November 2026, with a ruleset requiring both checks.</p>
+  <p>v2 was tested on GitHub on 24 November 2026. The test pull requests and deployments were removed afterwards.</p>
   <div class="tbl">
     <table>
       <thead><tr><th>Test</th><th>Result</th></tr></thead>
       <tbody>
-        <tr><td>Pull request changing 600 lines</td><td><span class="res-fail">Size check failed</span>; merging blocked</td></tr>
-        <tr><td>Commit dated 10 hours earlier</td><td><span class="res-fail">Age check failed</span>; merging blocked</td></tr>
-        <tr><td><span class="lbl">size-exception</span> label added</td><td><span class="res-pass">Check passed</span>; pull request became mergeable</td></tr>
-        <tr><td>Manual run of the hourly re-check</td><td>Re-evaluated all open pull requests with the same results</td></tr>
-        <tr><td>Delivery alerts, limits set to 0 hours</td><td>Listed both open pull requests and a merged one not yet on UAT</td></tr>
-        <tr><td>After a UAT deployment of the latest commit</td><td><span class="res-pass">"Everything merged … is on uat."</span></td></tr>
+        <tr><td>This release's own pull request, 1,282 lines</td><td><span class="res-fail">Size check failed</span>; with <span class="lbl">size-exception</span> it <span class="res-pass">passed</span></td></tr>
+        <tr><td>Commit dated Friday 16:00 IST, checked Tuesday 12:37 IST</td><td><span class="res-fail">Age check failed</span> at 14.6 working hours: Friday 2h + Monday 9h + Tuesday 3.6h</td></tr>
+        <tr><td>Delivery alerts with limits set to 0</td><td>One message: 2 open pull requests waiting for a first review, 3 merged pull requests not on UAT, a failed UAT deployment, and a repo with no UAT records</td></tr>
+        <tr><td>23 automated tests, on every pull request</td><td><span class="res-pass">Pass</span>: the clock across weekends, holidays and daylight saving, both checks, the four stages, 151-file paging, and Slack messages and errors against a fake Slack server</td></tr>
       </tbody>
     </table>
   </div>
-  <p>The Slack message itself wasn't tested, because the test repo has no webhook.</p>
+  <p>A real Slack webhook hasn't been tested yet. Add yours and click <strong>Run workflow</strong> once to confirm.</p>
 </section>
 
 <footer>Source, issues and the full README: <a href="https://github.com/BaluRaut/delivery-guardrails">github.com/BaluRaut/delivery-guardrails</a></footer>
