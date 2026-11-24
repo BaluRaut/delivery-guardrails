@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delivery Guardrails</title>
+<meta name="description" content="GitHub Actions that block pull requests over 500 lines or older than 8 hours, and alert when merged work hasn't reached UAT.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f6f8fa; --surface:#ffffff; --sunk:#f0f3f6; --ink:#1f2328; --muted:#59636e; --line:#d1d9e0;
+  --pass:#1a7f37; --fail:#cf222e; --link:#0969da; --label:#fbca04; --label-ink:#3b2e00; --code:#f6f8fa;
+  --sans:"Onest",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ color-scheme:dark;
+    --bg:#0d1117; --surface:#151b23; --sunk:#10151c; --ink:#f0f6fc; --muted:#9198a1; --line:#3d444d;
+    --pass:#3fb950; --fail:#f85149; --link:#4493f8; --code:#0f141a; }
+}
+:root[data-theme="dark"]{ color-scheme:dark;
+  --bg:#0d1117; --surface:#151b23; --sunk:#10151c; --ink:#f0f6fc; --muted:#9198a1; --line:#3d444d;
+  --pass:#3fb950; --fail:#f85149; --link:#4493f8; --code:#0f141a; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--sans);padding-inline:16px;padding-block:36px 80px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:64px}
+a{color:var(--link);text-underline-offset:2px}
+:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+h1,h2,h3{margin:0;line-height:1.15;text-wrap:balance}
+h1{font-size:clamp(34px,5.5vw,56px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(24px,3vw,30px);font-weight:700;letter-spacing:-.01em}
+h3{font-size:17px;font-weight:700}
+p{margin:0;max-width:68ch}
+section{display:flex;flex-direction:column;gap:18px}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede{font-size:19px;color:var(--muted);max-width:58ch}
+header{display:flex;flex-direction:column;gap:16px}
+.links{display:flex;flex-wrap:wrap;gap:10px}
+.btn{display:inline-flex;align-items:center;gap:8px;font:600 14px/1 var(--sans);padding:11px 16px;border-radius:8px;border:1px solid var(--ink);background:var(--ink);color:var(--bg);text-decoration:none;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+code,pre{font-family:var(--mono);font-size:13px}
+:not(pre)>code{background:var(--sunk);border:1px solid var(--line);padding:1px 5px;border-radius:5px;font-size:.86em}
+
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px 22px;display:flex;flex-direction:column;gap:10px}
+.card .kind{font:500 12px/1 var(--mono);color:var(--muted)}
+.card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.tag{align-self:flex-start;font:600 12px/1 var(--mono);padding:5px 8px;border-radius:999px;border:1px solid currentColor}
+.tag.block{color:var(--fail)}.tag.alert{color:var(--link)}
+
+/* merge box mock */
+.mergebox{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:760px}
+.mb-head{display:flex;gap:12px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid var(--line)}
+.mb-head .x{flex:none;width:32px;height:32px;border-radius:50%;background:var(--fail);color:#fff;display:grid;place-items:center;font-weight:800}
+.mb-head b{display:block}
+.mb-head span{font-size:14px;color:var(--muted)}
+.check{display:grid;grid-template-columns:22px 150px 1fr auto;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--line);font-size:14px}
+.check:last-of-type{border-bottom:0}
+.check .dot{width:16px;height:16px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:800}
+.check .dot.fail{background:var(--fail)}.check .dot.pass{background:var(--pass)}
+.check code{font-size:12.5px}
+.check .req{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+.mb-foot{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 18px;background:var(--sunk);border-top:1px solid var(--line)}
+.mb-foot .merge{font:600 14px/1 var(--sans);padding:9px 14px;border-radius:6px;background:var(--line);color:var(--muted);border:0}
+.lbl{display:inline-block;font:600 12px/1 var(--sans);padding:4px 9px;border-radius:999px;background:var(--label);color:var(--label-ink)}
+@media (max-width:620px){.check{grid-template-columns:22px 1fr}.check .req{display:none}.check .desc{grid-column:2}}
+
+/* steps */
+.steps{list-style:none;margin:0;padding:0;counter-reset:s;display:flex;flex-direction:column;gap:14px}
+.steps>li{counter-increment:s;display:grid;grid-template-columns:36px minmax(0,1fr);gap:14px}
+.steps>li::before{content:counter(s);width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;font:600 14px/1 var(--mono)}
+.steps .body{display:flex;flex-direction:column;gap:8px;padding-top:4px;min-width:0}
+.steps .body p{color:var(--muted)}
+.snippet{position:relative;background:var(--code);border:1px solid var(--line);border-radius:10px}
+.snippet pre{margin:0;padding:14px 16px;overflow-x:auto;line-height:1.55}
+.copy{position:absolute;top:8px;right:8px;font:600 12px/1 var(--sans);padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.copy.done{color:var(--pass);border-color:var(--pass)}
+
+/* workflow files */
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{font:600 13px/1 var(--mono);padding:9px 12px;border-radius:8px 8px 0 0;border:1px solid var(--line);border-bottom:0;background:var(--sunk);color:var(--muted);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--code);color:var(--ink)}
+.file{border-top-left-radius:0}
+.file pre{max-height:520px}
+.filebar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;font-size:13px;color:var(--muted)}
+
+/* tables */
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:11px 14px;border-bottom:1px solid var(--line)}
+thead th{background:var(--sunk);font-size:13px}
+tr:last-child>*{border-bottom:0}
+td:first-child code{white-space:nowrap}
+.res-pass{color:var(--pass);font-weight:600}.res-fail{color:var(--fail);font-weight:600}
+
+.advice{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.advice div{display:flex;flex-direction:column;gap:6px}
+.advice p{color:var(--muted);font-size:15px}
+.rollout{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+footer{border-top:1px solid var(--line);padding-top:20px;font-size:14px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">GitHub Actions for small, fast pull requests</span>
+  <h1>Delivery Guardrails</h1>
+  <p class="lede">Two workflows you copy into your team's repos. One stops big or stale pull requests from merging. The other tells Slack when work is stuck before it reaches UAT.</p>
+  <div class="links">
+    <a class="btn" href="#setup-rules">Set it up</a>
+    <a class="btn ghost" href="https://github.com/BaluRaut/delivery-guardrails">View the repo</a>
+  </div>
+</header>
+
+<section aria-labelledby="what">
+  <span class="eyebrow">What you get</span>
+  <h2 id="what">Two guardrails</h2>
+  <div class="two">
+    <div class="card">
+      <span class="kind">pr-rules.yml</span>
+      <h3>PR rules</h3>
+      <span class="tag block">Blocks merging</span>
+      <ul>
+        <li>Fails a pull request that changes more than <strong>500 lines</strong>. Lock files, snapshots and generated code don't count.</li>
+        <li>Fails a pull request whose work started more than <strong>8 hours</strong> ago, re-checked every hour.</li>
+        <li>The tech lead can allow one with the <span class="lbl">size-exception</span> or <span class="lbl">age-exception</span> label.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <span class="kind">delivery-alerts.yml</span>
+      <h3>Delivery alerts</h3>
+      <span class="tag alert">Posts to Slack</span>
+      <ul>
+        <li>Pull requests open more than <strong>7 hours</strong> in your team's repos, drafts excluded.</li>
+        <li>Merged pull requests not on <strong>UAT</strong> within 7 hours.</li>
+        <li>Runs hourly in office hours. Without a webhook it prints the alerts in the run log, which is useful as a dry run.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="looks">
+  <span class="eyebrow">In practice</span>
+  <h2 id="looks">What a blocked pull request looks like</h2>
+  <p>These are the real messages from the test run. The reason is in the check, so the author knows what to fix.</p>
+  <div class="mergebox" role="img" aria-label="Example merge box: the size check failed with 600 lines changed, the age check passed, and merging is blocked">
+    <div class="mb-head"><span class="x" aria-hidden="true">✕</span><div><b>Merging is blocked</b><span>A required status check has failed.</span></div></div>
+    <div class="check"><span class="dot fail" aria-hidden="true">✕</span><code>pr-rules/size</code><span class="desc">600 lines changed. Split it into PRs under 500 lines.</span><span class="req">Required</span></div>
+    <div class="check"><span class="dot pass" aria-hidden="true">✓</span><code>pr-rules/age</code><span class="desc">Started 0h ago (limit 8h)</span><span class="req">Required</span></div>
+    <div class="mb-foot"><button class="merge" type="button" disabled>Merge pull request</button><span>Add <span class="lbl">size-exception</span> and the check turns green: "600 lines changed; allowed by the size-exception label".</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="setup-rules" id="setup-rules">
+  <span class="eyebrow">Setup · in each repo</span>
+  <h2>Block big or old pull requests</h2>
+  <ol class="steps">
+    <li><div class="body"><h3>Copy the workflow</h3><p>Add <code>.github/workflows/pr-rules.yml</code> (shown <a href="#files">below</a>) to the repo's default branch. The hourly re-check only runs from there.</p></div></li>
+    <li><div class="body"><h3>Create the exception labels</h3>
+      <div class="snippet"><pre><code>gh label create size-exception --color FBCA04 --description "Allowed over the line limit; tech lead approved"
+gh label create age-exception  --color FBCA04 --description "Allowed over the age limit; tech lead approved"</code></pre></div></div></li>
+    <li><div class="body"><h3>Open any pull request</h3><p>The two checks need to report once before GitHub lets you mark them as required.</p></div></li>
+    <li><div class="body"><h3>Make the checks required</h3><p>Settings → Rules → Rulesets → New branch ruleset. Target the default branch, turn on <strong>Require status checks to pass</strong>, add <code>pr-rules/size</code> and <code>pr-rules/age</code>, and set enforcement to Active. Or run this from the repo folder:</p>
+      <div class="snippet"><pre><code>gh api -X POST "repos/{owner}/{repo}/rulesets" --input - &lt;&lt;'JSON'
+{
+  "name": "PR rules required",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+  "rules": [
+    { "type": "required_status_checks", "parameters": {
+      "strict_required_status_checks_policy": false,
+      "required_status_checks": [ { "context": "pr-rules/size" }, { "context": "pr-rules/age" } ] } }
+  ]
+}
+JSON</code></pre></div></div></li>
+  </ol>
+</section>
+
+<section aria-labelledby="setup-alerts">
+  <span class="eyebrow">Setup · once, in one repo</span>
+  <h2 id="setup-alerts">Alert on stuck work</h2>
+  <ol class="steps">
+    <li><div class="body"><h3>Copy the workflow</h3><p>Add <code>.github/workflows/delivery-alerts.yml</code> to one of your team's repos.</p></div></li>
+    <li><div class="body"><h3>List your team's repos</h3>
+      <div class="snippet"><pre><code>gh variable set TEAM_REPOS --body "your-org/orders-api your-org/orders-web your-org/refund-worker"</code></pre></div></div></li>
+    <li><div class="body"><h3>Add a read-only token</h3><p>Create a fine-grained token with access to only those repos and read-only Pull requests, Deployments and Contents. Save it as the secret <code>TEAM_READ_TOKEN</code>. If you watch only the repo the workflow lives in, skip this step.</p></div></li>
+    <li><div class="body"><h3>Connect Slack</h3><p>Create an incoming webhook for your team channel and save it as the secret <code>SLACK_WEBHOOK</code>.</p></div></li>
+    <li><div class="body"><h3>Record UAT deployments</h3><p>If you deploy with GitHub Actions, give the UAT job <code>environment: uat</code> and GitHub records every deployment. With Jenkins, Argo CD or similar, add this step after a successful UAT deploy:</p>
+      <div class="snippet"><pre><code>id=$(gh api -X POST "repos/$REPO/deployments" --input - --jq .id &lt;&lt;JSON
+{"ref": "$DEPLOYED_SHA", "environment": "uat", "auto_merge": false, "required_contexts": []}
+JSON
+)
+gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=success</code></pre></div></div></li>
+    <li><div class="body"><h3>Run it once</h3><p>Open the Actions tab, choose <strong>Delivery alerts</strong> and click <strong>Run workflow</strong>. After that it runs hourly, Monday to Friday, 08:30–18:30 IST.</p></div></li>
+  </ol>
+</section>
+
+<section aria-labelledby="files" id="files">
+  <span class="eyebrow">The workflow files</span>
+  <h2>Copy them straight from here</h2>
+  <p>Loaded live from the repo's <code>main</code> branch, so this is always the current version.</p>
+  <div>
+    <div class="tabs" role="tablist" aria-label="Workflow files">
+      <button class="tab" role="tab" id="tab-rules" aria-selected="true" aria-controls="file" data-file="pr-rules.yml">pr-rules.yml</button>
+      <button class="tab" role="tab" id="tab-alerts" aria-selected="false" aria-controls="file" data-file="delivery-alerts.yml">delivery-alerts.yml</button>
+    </div>
+    <div class="snippet file" id="file" role="tabpanel" aria-labelledby="tab-rules"><pre><code id="file-code">Loading…</code></pre></div>
+  </div>
+  <div class="filebar"><span id="file-path">.github/workflows/pr-rules.yml</span><a id="file-link" href="https://github.com/BaluRaut/delivery-guardrails/blob/main/.github/workflows/pr-rules.yml">Open on GitHub</a></div>
+</section>
+
+<section aria-labelledby="settings">
+  <span class="eyebrow">Settings</span>
+  <h2 id="settings">Change the limits without editing YAML</h2>
+  <p>Set these under Settings → Secrets and variables → Actions → Variables. Anything you don't set uses the default.</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>MAX_LINES</code></td><td>500</td><td>Most changed lines in one pull request</td></tr>
+        <tr><td><code>MAX_AGE_HOURS</code></td><td>8</td><td>Most hours since the work started</td></tr>
+        <tr><td><code>AGE_FROM</code></td><td><code>oldest-commit</code></td><td>Or <code>pr-opened</code>, a clock nobody can change</td></tr>
+        <tr><td><code>IGNORE_PATHS</code></td><td>lock files, <code>.snap</code>, <code>generated/</code></td><td>Regular expression for files that don't count towards the limit</td></tr>
+        <tr><td><code>TEAM_REPOS</code></td><td>this repo</td><td>Space-separated <code>owner/repo</code> list to watch</td></tr>
+        <tr><td><code>MAX_PR_HOURS</code></td><td>7</td><td>Alert on pull requests open longer than this</td></tr>
+        <tr><td><code>MAX_UAT_HOURS</code></td><td>7</td><td>Alert on merged pull requests not on UAT after this</td></tr>
+        <tr><td><code>UAT_ENVIRONMENT</code></td><td><code>uat</code></td><td>Deployment environment name to watch</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="advice">
+  <span class="eyebrow">Before you switch on the age rule</span>
+  <h2 id="advice">Three things to know</h2>
+  <div class="advice">
+    <div><h3>Clock hours include nights</h3><p>Work started at 5pm and opened as a pull request the next morning is already 16 hours old. Consider 24 hours, or start with the age limit as an alert only.</p></div>
+    <div><h3>Authors can't fix slow reviews</h3><p>A pull request waiting on reviewers still turns red at hour 8. Block on size, which the author controls, and alert on age so reviewers act.</p></div>
+    <div><h3>Commit dates can be changed</h3><p><code>git commit --amend --reset-author</code> resets them. Set <code>AGE_FROM=pr-opened</code> if that matters.</p></div>
+  </div>
+  <h3>A sensible rollout</h3>
+  <ol class="rollout">
+    <li>Turn on the 500-line block.</li>
+    <li>Run the age limit as an alert for 2–3 weeks.</li>
+    <li>Make it blocking once most pull requests already merge in time.</li>
+  </ol>
+</section>
+
+<section aria-labelledby="tested">
+  <span class="eyebrow">Tested</span>
+  <h2 id="tested">What was checked</h2>
+  <p>Both workflows were run in the repo on 24 November 2026, with a ruleset requiring both checks.</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Test</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Pull request changing 600 lines</td><td><span class="res-fail">Size check failed</span>; merging blocked</td></tr>
+        <tr><td>Commit dated 10 hours earlier</td><td><span class="res-fail">Age check failed</span>; merging blocked</td></tr>
+        <tr><td><span class="lbl">size-exception</span> label added</td><td><span class="res-pass">Check passed</span>; pull request became mergeable</td></tr>
+        <tr><td>Manual run of the hourly re-check</td><td>Re-evaluated all open pull requests with the same results</td></tr>
+        <tr><td>Delivery alerts, limits set to 0 hours</td><td>Listed both open pull requests and a merged one not yet on UAT</td></tr>
+        <tr><td>After a UAT deployment of the latest commit</td><td><span class="res-pass">"Everything merged … is on uat."</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The Slack message itself wasn't tested, because the test repo has no webhook.</p>
+</section>
+
+<footer>Source, issues and the full README: <a href="https://github.com/BaluRaut/delivery-guardrails">github.com/BaluRaut/delivery-guardrails</a></footer>
+</div>
+
+<script>
+const RAW = 'https://raw.githubusercontent.com/BaluRaut/delivery-guardrails/main/.github/workflows/'
+const BLOB = 'https://github.com/BaluRaut/delivery-guardrails/blob/main/.github/workflows/'
+const cache = {}
+
+// A copy button on every snippet
+document.querySelectorAll('.snippet').forEach((box) => {
+  const button = document.createElement('button')
+  button.type = 'button'; button.className = 'copy'; button.textContent = 'Copy'
+  button.addEventListener('click', async () => {
+    const text = box.querySelector('code').textContent
+    try {
+      await navigator.clipboard.writeText(text)
+      button.textContent = 'Copied'; button.classList.add('done')
+    } catch {
+      const range = document.createRange(); range.selectNodeContents(box.querySelector('code'))
+      getSelection().removeAllRanges(); getSelection().addRange(range)
+      button.textContent = 'Press Ctrl+C'
+    }
+    setTimeout(() => { button.textContent = 'Copy'; button.classList.remove('done') }, 2000)
+  })
+  box.append(button)
+})
+
+async function showFile(name) {
+  const code = document.getElementById('file-code')
+  document.getElementById('file-path').textContent = `.github/workflows/${name}`
+  document.getElementById('file-link').href = BLOB + name
+  code.textContent = 'Loading…'
+  try {
+    if (!cache[name]) {
+      const response = await fetch(RAW + name)
+      if (!response.ok) throw new Error(response.status)
+      cache[name] = await response.text()
+    }
+    code.textContent = cache[name]
+  } catch {
+    code.textContent = `Couldn't load the file here. Open it on GitHub: ${BLOB + name}`
+  }
+}
+
+document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t === tab)))
+  document.getElementById('file').setAttribute('aria-labelledby', tab.id)
+  showFile(tab.dataset.file)
+}))
+showFile('pr-rules.yml')
+</script>
+</body>
+</html>
