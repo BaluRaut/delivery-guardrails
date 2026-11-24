@@ -139,10 +139,15 @@ A sensible rollout:
 
 ## Tested
 
-The PR rules were tested in this repo on 2026-11-24, with a ruleset requiring both checks:
+Both workflows were tested in this repo on 2026-11-24, with a ruleset requiring both checks. The test pull requests and deployments were removed afterwards.
 
 | Test | Result |
 |---|---|
 | Pull request changing 600 lines | `pr-rules/size` failed: "600 lines changed. Split it into PRs under 500 lines." Merge blocked. |
 | Pull request whose commit was dated 10 hours earlier | `pr-rules/age` failed: "Started 10h ago. Merge or split work within 8h." Merge blocked. |
 | `size-exception` label added to the 600-line pull request | Check turned green ("allowed by the size-exception label"); pull request became mergeable |
+| Manual run of the hourly re-check | Re-evaluated all three open pull requests with the same results |
+| Delivery alerts, both limits set to 0 hours, UAT on an older commit | Listed both open pull requests, and the merged README pull request as "merged but not on uat" |
+| The same, after recording a UAT deployment of the latest commit | "Everything merged more than 0 hours ago is on uat." |
+
+The Slack message itself wasn't tested here, because this repo has no webhook. Without one, the same text goes to the run log and summary.
