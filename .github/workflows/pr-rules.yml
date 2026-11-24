@@ -1,77 +1,42 @@
 # Blocks merging a pull request that is too big or has been open too long.
-# Make the two checks it reports (pr-rules/size and pr-rules/age) required in a
-# branch ruleset; see README.md. Settings come from repository variables.
+# Teams copy templates/pr-rules.yml instead; this copy runs this repo's code.
 name: PR rules
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   schedule:
-    - cron: "0 * * * *"   # hourly: age changes without any new push, so re-check open PRs
+    - cron: "30 3-12 * * 1-5"   # hourly, 09:00–18:00 IST on weekdays: the working clock only moves then
   workflow_dispatch:
+
+concurrency:
+  group: pr-rules-${{ github.event.pull_request.number || 'all' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
   pull-requests: read
   statuses: write
 
-env:
-  MAX_LINES: ${{ vars.MAX_LINES || 500 }}
-  MAX_AGE_HOURS: ${{ vars.MAX_AGE_HOURS || 8 }}
-  AGE_FROM: ${{ vars.AGE_FROM || 'oldest-commit' }}   # or 'pr-opened'
-  # Files that don't count towards the line limit (a regular expression on the path)
-  IGNORE_PATHS: ${{ vars.IGNORE_PATHS || '(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$|\.snap$|(^|/)generated/' }}
-
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7        # this repo runs its own code, so changes are tested here first
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
       - name: Check size and age
+        run: node scripts/pr-rules.mjs
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          now=$(date -u +%s)
-          prs=${PR:-$(gh pr list -R "$REPO" --state open --json number --jq '.[].number')}
-          echo "| PR | Lines | Size | Age (h) | Age check |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
-
-          for n in $prs; do
-            pr=$(gh pr view "$n" -R "$REPO" --json headRefOid,labels,additions,deletions,files,commits,createdAt)
-            sha=$(jq -r .headRefOid <<<"$pr")
-            labels=",$(jq -r '[.labels[].name] | join(",")' <<<"$pr"),"
-
-            ignored=$(jq --arg ig "$IGNORE_PATHS" '[.files[] | select(.path | test($ig)) | .additions + .deletions] | add // 0' <<<"$pr")
-            lines=$(( $(jq '.additions + .deletions' <<<"$pr") - ignored ))
-            if [ "$AGE_FROM" = "pr-opened" ]; then
-              started=$(jq -r .createdAt <<<"$pr")
-            else
-              started=$(jq -r '[.commits[].authoredDate] | min' <<<"$pr")
-            fi
-            hours=$(( (now - $(date -u -d "$started" +%s)) / 3600 ))
-
-            size=success; size_msg="$lines lines changed (limit $MAX_LINES)"
-            if [ "$lines" -gt "$MAX_LINES" ]; then
-              if [[ "$labels" == *",size-exception,"* ]]; then
-                size_msg="$lines lines changed; allowed by the size-exception label"
-              else
-                size=failure; size_msg="$lines lines changed. Split it into PRs under $MAX_LINES lines."
-              fi
-            fi
-
-            age=success; age_msg="Started ${hours}h ago (limit ${MAX_AGE_HOURS}h)"
-            if [ "$hours" -ge "$MAX_AGE_HOURS" ]; then
-              if [[ "$labels" == *",age-exception,"* ]]; then
-                age_msg="Started ${hours}h ago; allowed by the age-exception label"
-              else
-                age=failure; age_msg="Started ${hours}h ago. Merge or split work within ${MAX_AGE_HOURS}h."
-              fi
-            fi
-
-            gh api -X POST "repos/$REPO/statuses/$sha" -f state="$size" -f context="pr-rules/size" -f description="$size_msg" > /dev/null
-            gh api -X POST "repos/$REPO/statuses/$sha" -f state="$age" -f context="pr-rules/age" -f description="$age_msg" > /dev/null
-            echo "#$n: size $size ($lines lines), age $age (${hours}h)"
-            echo "| #$n | $lines | $size | $hours | $age |" >> "$GITHUB_STEP_SUMMARY"
-          done
+          GITHUB_TOKEN: ${{ github.token }}
+          MAX_LINES: ${{ vars.MAX_LINES }}
+          MAX_AGE_HOURS: ${{ vars.MAX_AGE_HOURS }}
+          AGE_FROM: ${{ vars.AGE_FROM }}
+          IGNORE_PATHS: ${{ vars.IGNORE_PATHS }}
+          AGE_CLOCK: ${{ vars.AGE_CLOCK }}
+          WORK_TIMEZONE: ${{ vars.WORK_TIMEZONE }}
+          WORK_START: ${{ vars.WORK_START }}
+          WORK_END: ${{ vars.WORK_END }}
+          WORK_DAYS: ${{ vars.WORK_DAYS }}
+          HOLIDAYS: ${{ vars.HOLIDAYS }}

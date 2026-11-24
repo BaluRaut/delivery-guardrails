@@ -1,92 +1,41 @@
-# Posts to Slack when your team's work is stuck:
-#   1. a pull request has been open longer than MAX_PR_HOURS
-#   2. a merged pull request has not reached UAT within MAX_UAT_HOURS
-# Without a SLACK_WEBHOOK secret it only prints the alerts in the run log.
+# Sends one Slack message about stuck work. Teams copy
+# templates/delivery-alerts.yml instead; this copy runs this repo's code.
 name: Delivery alerts
 
 on:
   schedule:
-    - cron: "0 3-13 * * 1-5"   # hourly, Mon–Fri, 08:30–18:30 IST (cron runs in UTC)
+    - cron: "0 4-13 * * 1-5"    # hourly, 09:30–18:30 IST on weekdays (cron runs in UTC)
   workflow_dispatch:
+
+concurrency:
+  group: delivery-alerts
+  cancel-in-progress: false
 
 permissions:
   contents: read
   pull-requests: read
   deployments: read
 
-env:
-  TEAM_REPOS: ${{ vars.TEAM_REPOS || github.repository }}   # space-separated owner/repo list
-  MAX_PR_HOURS: ${{ vars.MAX_PR_HOURS || 7 }}
-  MAX_UAT_HOURS: ${{ vars.MAX_UAT_HOURS || 7 }}
-  UAT_ENVIRONMENT: ${{ vars.UAT_ENVIRONMENT || 'uat' }}
-
 jobs:
   alerts:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
       - name: Find stuck work
+        run: node scripts/delivery-alerts.mjs
         env:
-          GH_TOKEN: ${{ secrets.TEAM_READ_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.TEAM_READ_TOKEN || github.token }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        run: |
-          set -euo pipefail
-          now=$(date -u +%s)
-          post() {
-            echo "$1" | tee -a "$GITHUB_STEP_SUMMARY"
-            if [ -z "${SLACK_WEBHOOK:-}" ]; then
-              echo "(SLACK_WEBHOOK is not set, so nothing was sent to Slack)"
-              return
-            fi
-            jq -n --arg t "$1" '{text: $t}' |
-              curl -sS --fail -X POST -H 'Content-type: application/json' -d @- "$SLACK_WEBHOOK" > /dev/null
-          }
-
-          # 1. Pull requests open too long (drafts are ignored)
-          cutoff=$(date -u -d "$MAX_PR_HOURS hours ago" +%Y-%m-%dT%H:%M:%SZ)
-          repo_flags=()
-          for r in $TEAM_REPOS; do repo_flags+=(--repo "$r"); done
-          stale=$(gh search prs "${repo_flags[@]}" --state open --draft=false --created "<$cutoff" \
-            --json number,title,url,author,repository --limit 100 \
-            --jq '.[] | "• <\(.url)|\(.repository.name)#\(.number)> \(.title) by \(.author.login)"')
-          if [ -n "$stale" ]; then
-            post "Pull requests open more than $MAX_PR_HOURS hours:"$'\n'"$stale"
-          else
-            echo "No pull requests open more than $MAX_PR_HOURS hours."
-          fi
-
-          # 2. Merged pull requests not on UAT
-          late=""
-          uat_cutoff=$(( now - MAX_UAT_HOURS * 3600 ))
-          since=$(date -u -d '14 days ago' +%Y-%m-%d)
-          for r in $TEAM_REPOS; do
-            branch=$(gh api "repos/$r" --jq .default_branch)
-            # The commit on UAT: the newest deployment whose latest status is success
-            uat_sha=""
-            for id in $(gh api "repos/$r/deployments?environment=$UAT_ENVIRONMENT&per_page=30" --jq '.[].id'); do
-              if [ "$(gh api "repos/$r/deployments/$id/statuses?per_page=1" --jq '.[0].state // empty')" = "success" ]; then
-                uat_sha=$(gh api "repos/$r/deployments/$id" --jq .sha)
-                break
-              fi
-            done
-            if [ -z "$uat_sha" ]; then
-              echo "$r: no successful '$UAT_ENVIRONMENT' deployment recorded, so skipped."
-              continue
-            fi
-            while IFS=$'\t' read -r number title url merged_at merge_sha; do
-              [ -z "$number" ] && continue
-              [ "$(date -u -d "$merged_at" +%s)" -gt "$uat_cutoff" ] && continue
-              # Deployed if the UAT commit contains the merge commit
-              status=$(gh api "repos/$r/compare/$merge_sha...$uat_sha" --jq .status)
-              if [ "$status" != "ahead" ] && [ "$status" != "identical" ]; then
-                hours=$(( (now - $(date -u -d "$merged_at" +%s)) / 3600 ))
-                late+="• <$url|${r#*/}#$number> $title: merged ${hours}h ago"$'\n'
-              fi
-            done < <(gh pr list -R "$r" --state merged --base "$branch" --search "merged:>=$since" --limit 100 \
-                       --json number,title,url,mergedAt,mergeCommit \
-                       --jq '.[] | [.number, .title, .url, .mergedAt, .mergeCommit.oid] | @tsv')
-          done
-          if [ -n "$late" ]; then
-            post "Merged but not on $UAT_ENVIRONMENT after $MAX_UAT_HOURS hours:"$'\n'"$late"
-          else
-            echo "Everything merged more than $MAX_UAT_HOURS hours ago is on $UAT_ENVIRONMENT."
-          fi
+          TEAM_REPOS: ${{ vars.TEAM_REPOS || github.repository }}
+          MAX_PR_HOURS: ${{ vars.MAX_PR_HOURS }}
+          MAX_UAT_HOURS: ${{ vars.MAX_UAT_HOURS }}
+          UAT_ENVIRONMENT: ${{ vars.UAT_ENVIRONMENT }}
+          AGE_CLOCK: ${{ vars.AGE_CLOCK }}
+          WORK_TIMEZONE: ${{ vars.WORK_TIMEZONE }}
+          WORK_START: ${{ vars.WORK_START }}
+          WORK_END: ${{ vars.WORK_END }}
+          WORK_DAYS: ${{ vars.WORK_DAYS }}
+          HOLIDAYS: ${{ vars.HOLIDAYS }}

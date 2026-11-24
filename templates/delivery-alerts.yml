@@ -1,0 +1,49 @@
+# Sends one Slack message about your team's stuck work: pull requests open
+# too long (grouped by who must act), merged work not on UAT, failed UAT
+# deployments and repos with no UAT deployments recorded.
+# Copy this file into ONE of your team's repos and set TEAM_REPOS.
+# Settings: https://baluraut.github.io/delivery-guardrails/#settings
+name: Delivery alerts
+
+on:
+  schedule:
+    - cron: "0 4-13 * * 1-5"    # hourly, 09:30–18:30 IST on weekdays (cron runs in UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: delivery-alerts
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  deployments: read
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: BaluRaut/delivery-guardrails
+          ref: v2.0.0              # a release tag; pin a commit SHA instead for the strictest setup
+          path: .guardrails
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Find stuck work
+        run: node .guardrails/scripts/delivery-alerts.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.TEAM_READ_TOKEN || github.token }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          TEAM_REPOS: ${{ vars.TEAM_REPOS || github.repository }}
+          MAX_PR_HOURS: ${{ vars.MAX_PR_HOURS }}
+          MAX_UAT_HOURS: ${{ vars.MAX_UAT_HOURS }}
+          UAT_ENVIRONMENT: ${{ vars.UAT_ENVIRONMENT }}
+          AGE_CLOCK: ${{ vars.AGE_CLOCK }}
+          WORK_TIMEZONE: ${{ vars.WORK_TIMEZONE }}
+          WORK_START: ${{ vars.WORK_START }}
+          WORK_END: ${{ vars.WORK_END }}
+          WORK_DAYS: ${{ vars.WORK_DAYS }}
+          HOLIDAYS: ${{ vars.HOLIDAYS }}

@@ -1,20 +1,27 @@
 # Delivery guardrails
 
-Two GitHub Actions workflows for a team that wants small pull requests that merge and deploy quickly.
+GitHub Actions that keep pull requests small and moving, for a team that wants to deliver quickly without a manager chasing people.
 
-| Workflow | What it does | Blocks merging? |
+**Site:** https://baluraut.github.io/delivery-guardrails/
+
+| Guardrail | What it does | Blocks merging? |
 |---|---|---|
-| [`pr-rules.yml`](.github/workflows/pr-rules.yml) | Fails a pull request that changes more than 500 lines, or whose work started more than 8 hours ago | Yes, once you make its checks required |
-| [`delivery-alerts.yml`](.github/workflows/delivery-alerts.yml) | Posts to Slack when a pull request has been open more than 7 hours, or a merged pull request hasn't reached UAT within 7 hours | No, it only alerts |
+| **PR rules** | Fails a pull request that changes more than 500 lines, or whose work started more than 8 working hours ago | Yes, once its checks are required |
+| **Delivery alerts** | One Slack message about stuck work: pull requests open more than 6 working hours, grouped by who must act; merged work not on UAT after 7 working hours; a failed UAT deployment; repos with no UAT deployments recorded | No, it only alerts |
 
-All limits are settings, so you can change them without editing the YAML.
+## Working hours, not clock hours
 
-## 1. Block big or old pull requests
+Ages count only working time: by default 09:00–18:00 IST, Monday to Friday, skipping any holidays you list.
 
-Do this in each repo you want to protect.
+- A pull request opened at **4pm** gets **2 hours** that day, and the clock resumes at 9am the next working day.
+- Friday 5pm to Monday 10am is **2 hours**.
+- Saturday, Sunday, nights and holidays add nothing.
 
-1. **Copy the workflow.** Add [`.github/workflows/pr-rules.yml`](.github/workflows/pr-rules.yml) to the repo's default branch. The hourly re-check only runs from the default branch.
+Set `AGE_CLOCK=calendar` to count every hour instead.
 
+## Set up PR rules (in each repo)
+
+1. **Copy** [`templates/pr-rules.yml`](templates/pr-rules.yml) to `.github/workflows/pr-rules.yml` on the repo's default branch.
 2. **Create the exception labels:**
 
    ```sh
@@ -22,14 +29,14 @@ Do this in each repo you want to protect.
    gh label create age-exception  --color FBCA04 --description "Allowed over the age limit; tech lead approved"
    ```
 
-3. **Open any pull request** so the two checks report once. GitHub only lists a check as "required" after it has seen it.
+3. **Open any pull request**, so the two checks report once. GitHub only offers a check as "required" after it has seen it.
+4. **Make the checks required:**
+   1. Go to Settings → Rules → Rulesets → New branch ruleset.
+   2. Target the default branch.
+   3. Turn on **Require status checks to pass** and add `pr-rules/size` and `pr-rules/age`.
+   4. Set enforcement to **Active**.
 
-4. **Make the checks required.** Go to Settings → Rules → Rulesets → New branch ruleset:
-   - Target: the default branch.
-   - Turn on **Require status checks to pass** and add `pr-rules/size` and `pr-rules/age`.
-   - Set enforcement to **Active** and save.
-
-   Or with the GitHub CLI, from the repo folder:
+   Or run:
 
    ```sh
    gh api -X POST "repos/{owner}/{repo}/rulesets" --input - <<'JSON'
@@ -47,46 +54,28 @@ Do this in each repo you want to protect.
    JSON
    ```
 
-A failing pull request now shows a red check with the reason, for example *"600 lines changed. Split it into PRs under 500 lines."*, and the merge button stays locked.
+A failing pull request shows a red check with the reason, for example *"612 lines changed. Split it into PRs under 500 lines."*, and the merge button stays locked. The tech lead can allow a justified exception with the `size-exception` or `age-exception` label: a migration, a large rename, generated code or an emergency fix.
 
-### How the checks decide
+## Set up delivery alerts (once, in one repo)
 
-- **Size (`pr-rules/size`)** counts lines added plus lines removed. Lock files, Jest snapshots and anything under a `generated/` folder don't count.
-- **Age (`pr-rules/age`)** measures from the oldest commit in the pull request, or from when the pull request was opened if you set `AGE_FROM` to `pr-opened`. Age grows with no new push, so the workflow re-checks every open pull request each hour. A pull request turns red within about an hour of passing the limit.
-- **Exceptions:** the `size-exception` and `age-exception` labels turn the matching check green, and say so in the check. Use them for database migrations, large renames, generated code and emergency fixes. Agree that only the tech lead adds them; GitHub can't restrict who adds a label.
+1. **Copy** [`templates/delivery-alerts.yml`](templates/delivery-alerts.yml) to `.github/workflows/delivery-alerts.yml` in any one of your team's repos.
+2. **List your team's repos:** `gh variable set TEAM_REPOS --body "your-org/orders-api your-org/orders-web"`.
+3. **Add a read-only token:**
+   1. Create a fine-grained token with access to only those repos.
+   2. Give it read-only *Pull requests*, *Deployments* and *Contents*.
+   3. Save it as the secret `TEAM_READ_TOKEN`.
 
-## 2. Alert on stuck work
+   If you only watch the repo the workflow lives in, you can skip this step.
+4. **Connect Slack:** create an incoming webhook for the team channel and save it as the secret `SLACK_WEBHOOK`. Until you do, the message only appears in the run log and summary, which works as a dry run.
+5. **Record UAT deployments:** see the next section.
+6. **Run it once** from the Actions tab with **Run workflow**. After that it runs hourly on weekdays, 09:30–18:30 IST.
 
-Do this once, in any one of your team's repos.
+### Recording UAT deployments
 
-1. **Copy the workflow.** Add [`.github/workflows/delivery-alerts.yml`](.github/workflows/delivery-alerts.yml) to that repo's default branch.
+The alerts read GitHub's deployment records for the environment `uat`; change the name with `UAT_ENVIRONMENT`.
 
-2. **List your team's repos** in a repository variable, under Settings → Secrets and variables → Actions → Variables:
-
-   ```sh
-   gh variable set TEAM_REPOS --body "your-org/orders-api your-org/orders-web your-org/refund-worker"
-   ```
-
-3. **Create a token that can read those repos:**
-   1. Go to GitHub → Settings → Developer settings → Fine-grained tokens.
-   2. Under repository access, choose only your team's repos.
-   3. Give read-only access to Pull requests, Deployments and Contents.
-   4. Save it as the secret `TEAM_READ_TOKEN`.
-
-   If the workflow only watches its own repo, you can skip this step; it falls back to the built-in token.
-
-4. **Create a Slack incoming webhook** for your team channel (Slack → Apps → Incoming Webhooks) and save it as the secret `SLACK_WEBHOOK`. Until you do, the alerts only appear in the run log and the run summary, which is handy for a dry run.
-
-5. **Record UAT deployments** (see below), then run the workflow once from the Actions tab with **Run workflow**.
-
-It runs hourly, Monday to Friday, 08:30–18:30 IST. To change that, edit the `cron` line; cron times are in UTC.
-
-### How the UAT alert knows what's on UAT
-
-It reads GitHub's deployment records for the environment named `uat` (change it with `UAT_ENVIRONMENT`). The commit on UAT is the newest deployment whose latest status is *success*. A merged pull request counts as deployed when that commit contains its merge commit.
-
-- **Deploying with GitHub Actions:** give the deploy job `environment: uat`, and GitHub records every deployment for you.
-- **Deploying with Jenkins, Argo CD, Octopus or similar:** add one step after a successful UAT deploy:
+- **GitHub Actions deploys:** give the UAT job `environment: uat`, and every deployment is recorded automatically.
+- **Jenkins, Argo CD, Octopus or similar:** add this after each UAT deploy, with `state=failure` when it fails:
 
   ```sh
   id=$(gh api -X POST "repos/$REPO/deployments" --input - --jq .id <<JSON
@@ -96,58 +85,113 @@ It reads GitHub's deployment records for the environment named `uat` (change it 
   gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=success
   ```
 
-Repos with no successful UAT deployment recorded are skipped, and the run log says so.
+A merged pull request counts as on UAT when the latest successful UAT deployment contains its merge commit.
+
+### What the Slack message looks like
+
+An example, with pull request names made up:
+
+```text
+Pull requests open more than 6 working hours
+  Waiting for a first review (reviewers to act)
+  • orders-api#412 Add cancel button · 7.5h · by @asha · @ravi
+  Changes requested (author to act)
+  • orders-web#88 Refund banner · 9h · by @meera · @meera
+
+Merged but not on uat after 7 working hours
+• orders-api#405 Retry refunds · merged 8h ago
+
+Latest uat deployment failed
+• refund-worker: deployment of 3f2a9c1 failed 1h ago
+```
+
+Each stuck pull request lands in one of four stages, so the right people act:
+- waiting for a first review;
+- reviewed, waiting for approval;
+- changes requested;
+- approved but not merged.
 
 ## Settings
 
-Set these as repository variables (Settings → Secrets and variables → Actions → Variables). Anything you don't set uses the default.
+Set these as repository variables (Settings → Secrets and variables → Actions → Variables). Anything unset uses the default.
 
 | Variable | Default | Used by | Meaning |
 |---|---|---|---|
-| `MAX_LINES` | `500` | PR rules | Most changed lines allowed in one pull request |
-| `MAX_AGE_HOURS` | `8` | PR rules | Most hours allowed since the work started |
+| `MAX_LINES` | `500` | PR rules | Most changed lines in one pull request |
+| `MAX_AGE_HOURS` | `8` | PR rules | Most hours since the work started before merging is blocked |
 | `AGE_FROM` | `oldest-commit` | PR rules | `oldest-commit`, or `pr-opened` for a clock nobody can change |
 | `IGNORE_PATHS` | lock files, `.snap`, `generated/` | PR rules | Regular expression for files that don't count towards `MAX_LINES` |
 | `TEAM_REPOS` | this repo | Alerts | Space-separated `owner/repo` list |
-| `MAX_PR_HOURS` | `7` | Alerts | Alert on pull requests open longer than this |
+| `MAX_PR_HOURS` | `6` | Alerts | Alert on pull requests open longer than this; set it below `MAX_AGE_HOURS` so the alert comes first |
 | `MAX_UAT_HOURS` | `7` | Alerts | Alert on merged pull requests not on UAT after this |
-| `UAT_ENVIRONMENT` | `uat` | Alerts | Deployment environment name to watch |
+| `UAT_ENVIRONMENT` | `uat` | Alerts | Deployment environment name |
+| `AGE_CLOCK` | `working` | Both | `working` or `calendar` |
+| `WORK_TIMEZONE` | `Asia/Kolkata` | Both | Any IANA time zone, for example `Europe/London` |
+| `WORK_START` / `WORK_END` | `09:00` / `18:00` | Both | Working hours, 24-hour clock |
+| `WORK_DAYS` | `Mon,Tue,Wed,Thu,Fri` | Both | Working days |
+| `HOLIDAYS` | none | Both | Dates to skip, for example `2026-12-25,2027-01-26` |
 
 | Secret | Needed for |
 |---|---|
 | `SLACK_WEBHOOK` | Sending alerts to Slack |
-| `TEAM_READ_TOKEN` | Watching repos other than the one the workflow lives in |
+| `TEAM_READ_TOKEN` | Watching repos other than the one the alerts workflow lives in |
 
-## What to know before switching on the age rule
+The schedules in the templates run during IST working hours. If you change the time zone or use the calendar clock, change their `cron` lines too; cron times are in UTC.
 
-- **Clock hours include nights and weekends.** Work started at 5pm and opened as a pull request the next morning is already 16 hours old. Consider 24 hours, or start with the age rule as a Slack alert only.
-- **The author can't fix a slow review.** A pull request waiting on reviewers still turns red at hour 8. Many teams block on size, which the author controls, and alert on age so reviewers act.
-- **Commit dates can be changed** with `git commit --amend --reset-author`. Set `AGE_FROM=pr-opened` if that matters.
+## How it works
 
-A sensible rollout:
+```text
+GitHub Actions (on a pull request, or hourly)
+  └─ fetches the scripts from this repo at a pinned release (v2.0.0)
+      └─ node scripts/pr-rules.mjs        → GitHub API → pr-rules/size and pr-rules/age checks
+      └─ node scripts/delivery-alerts.mjs → GitHub API → one Slack message
+```
 
-1. Turn on the 500-line block.
-2. Run the age limit as an alert for 2–3 weeks.
-3. Make it blocking once most pull requests already merge in time.
+The scripts have no dependencies and use only the GitHub REST API, following every page of results. Your workflows pin a release tag, so an update here doesn't change your checks until you move the tag. For the strictest setup, pin a commit SHA.
+
+## What it doesn't measure
+
+- **Individual performance.** It reports stuck work, not people. Don't turn alerts into rankings, and don't measure "pull requests per developer".
+- **Quality.** A small, fast pull request can still be wrong. Code review and tests stay essential.
+- **Work outside pull requests.** Commits pushed straight to the default branch, design work and support aren't counted.
+- **Production.** It stops at UAT. Track production with your DORA metrics.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `pr-rules/size` isn't offered when adding a required check | The checks haven't reported yet. Open a pull request first. |
+| Checks never appear on pull requests from forks | The built-in token is read-only for forks, so statuses can't be posted. Work in branches of the same repo. |
+| A repo shows under "No uat deployments recorded" | No successful deployment with that environment name. Check the name, and that your pipeline records deployments. |
+| A merged pull request never shows as late | It was merged more than 14 days ago, or it was pushed without a pull request. |
+| `GitHub GET … returned 404` in the alerts run | `TEAM_READ_TOKEN` can't see that repo. Add the repo to the token. |
+| `Slack returned 404: no_service` | The webhook was removed or mistyped. Create a new one and update the secret. |
+| `WORK_START must look like 09:00` | Use 24-hour `HH:MM`. |
+| The age check doesn't turn red overnight | Expected: the working clock doesn't move outside working hours. |
+
+## Rolling it out
+
+| Week | Step |
+|---|---|
+| 1 | Install both workflows on one squad's repos. Make the size check required; leave the age check visible but not required. |
+| 2 | Watch the alerts and how often pull requests cross the limits. Adjust `IGNORE_PATHS` and the hours. |
+| 3 | Connect Slack, and agree who acts on each alert stage. |
+| 4 | Review the numbers with the team, then make `pr-rules/age` required too. |
 
 ## Limits
 
-- **Forked pull requests can't be checked.** The built-in token is read-only on pull requests from forks, so the checks can't post. Teams working in one repo aren't affected.
-- **Ignored files are only spotted in the first 100 files** of a pull request. Beyond that they count towards the limit, so the check only errs on the strict side.
-- **Commits pushed straight to the default branch,** without a pull request, aren't covered by the UAT alert.
-- **Scheduled runs can start a few minutes late.** In public repos, GitHub pauses schedules after 60 days with no activity.
+- Pull requests with more than 3,000 files are only partly read by the GitHub API; the line count then includes every file, so the check errs on the strict side.
+- Only the first 250 commits of a pull request are read for the age. It's unusual to hit this limit.
+- Scheduled runs can start a few minutes late. In public repos, GitHub pauses schedules after 60 days with no activity.
 
-## Tested
+## Development
 
-Both workflows were tested in this repo on 2026-11-24, with a ruleset requiring both checks. The test pull requests and deployments were removed afterwards.
+```text
+scripts/lib.mjs              settings, working-hours clock, GitHub client, Slack
+scripts/pr-rules.mjs         the size and age checks
+scripts/delivery-alerts.mjs  the alert message
+templates/                   workflows for teams to copy
+test/                        unit and end-to-end tests against fake GitHub and Slack servers
+```
 
-| Test | Result |
-|---|---|
-| Pull request changing 600 lines | `pr-rules/size` failed: "600 lines changed. Split it into PRs under 500 lines." Merge blocked. |
-| Pull request whose commit was dated 10 hours earlier | `pr-rules/age` failed: "Started 10h ago. Merge or split work within 8h." Merge blocked. |
-| `size-exception` label added to the 600-line pull request | Check turned green ("allowed by the size-exception label"); pull request became mergeable |
-| Manual run of the hourly re-check | Re-evaluated all three open pull requests with the same results |
-| Delivery alerts, both limits set to 0 hours, UAT on an older commit | Listed both open pull requests, and the merged README pull request as "merged but not on uat" |
-| The same, after recording a UAT deployment of the latest commit | "Everything merged more than 0 hours ago is on uat." |
-
-The Slack message itself wasn't tested here, because this repo has no webhook. Without one, the same text goes to the run log and summary.
+Run the tests with `node --test test/*.test.mjs` (Node 20 or later). CI runs them on every pull request. The workflows in `.github/workflows/` run this repo's own code, so changes are tried here before they're released as a new tag.

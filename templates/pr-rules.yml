@@ -1,0 +1,49 @@
+# Blocks merging a pull request that is too big or has been open too long.
+# Copy this file to .github/workflows/ in each repo, then make the checks
+# pr-rules/size and pr-rules/age required in a branch ruleset.
+# Settings: https://baluraut.github.io/delivery-guardrails/#settings
+name: PR rules
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  schedule:
+    - cron: "30 3-12 * * 1-5"   # hourly, 09:00–18:00 IST on weekdays: the working clock only moves then
+  workflow_dispatch:
+
+concurrency:
+  group: pr-rules-${{ github.event.pull_request.number || 'all' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: BaluRaut/delivery-guardrails
+          ref: v2.0.0              # a release tag; pin a commit SHA instead for the strictest setup
+          path: .guardrails
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Check size and age
+        run: node .guardrails/scripts/pr-rules.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MAX_LINES: ${{ vars.MAX_LINES }}
+          MAX_AGE_HOURS: ${{ vars.MAX_AGE_HOURS }}
+          AGE_FROM: ${{ vars.AGE_FROM }}
+          IGNORE_PATHS: ${{ vars.IGNORE_PATHS }}
+          AGE_CLOCK: ${{ vars.AGE_CLOCK }}
+          WORK_TIMEZONE: ${{ vars.WORK_TIMEZONE }}
+          WORK_START: ${{ vars.WORK_START }}
+          WORK_END: ${{ vars.WORK_END }}
+          WORK_DAYS: ${{ vars.WORK_DAYS }}
+          HOLIDAYS: ${{ vars.HOLIDAYS }}
