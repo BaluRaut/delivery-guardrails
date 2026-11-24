@@ -99,6 +99,43 @@ td:first-child code{white-space:nowrap}
 .advice p{color:var(--muted);font-size:15px}
 .rollout{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
 footer{border-top:1px solid var(--line);padding-top:20px;font-size:14px;color:var(--muted)}
+
+/* working-hours timeline */
+.clock{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+.day{display:grid;grid-template-columns:96px minmax(0,1fr) 64px;gap:12px;align-items:center;font-size:14px}
+.day b{font-weight:600}
+.track{position:relative;height:26px;border-radius:6px;background:repeating-linear-gradient(90deg,var(--sunk) 0 calc(100%/24 - 1px),var(--line) calc(100%/24 - 1px) calc(100%/24))}
+.hours{position:absolute;top:0;bottom:0;left:calc(100%*9/24);width:calc(100%*9/24);border:1.5px dashed var(--muted);border-radius:6px}
+.count{position:absolute;top:3px;bottom:3px;border-radius:4px;background:var(--link)}
+.day .sum{font:600 14px/1 var(--mono);text-align:right}
+.day.off{color:var(--muted)}
+.ticks{display:grid;grid-template-columns:96px minmax(0,1fr) 64px;gap:12px;font:500 11px/1 var(--mono);color:var(--muted)}
+.ticks div{position:relative;height:12px}
+.ticks div span{position:absolute;transform:translateX(-50%)}
+.ticks .total{font-weight:600;color:var(--ink);text-align:right}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:3px;margin-right:6px;vertical-align:0}
+
+/* flow */
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.node{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 150px}
+.node b{font-size:14.5px}.node span{font-size:13px;color:var(--muted)}
+.node code{font-size:12px}
+.arrow{font:600 18px/1 var(--mono);color:var(--muted)}
+.outs{display:flex;flex-direction:column;gap:10px;flex:1 1 200px}
+.outs .node{flex:0 0 auto}
+@media (max-width:700px){.flow{flex-direction:column;align-items:stretch}.arrow{transform:rotate(90deg);align-self:center}}
+
+/* slack example */
+.chat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;max-width:760px}
+.avatar{width:40px;height:40px;border-radius:8px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font:700 13px/1 var(--mono)}
+.msg{display:flex;flex-direction:column;gap:8px;font-size:14.5px;min-width:0}
+.msg .who{font-weight:700}.msg .who small{font-weight:400;color:var(--muted);margin-left:6px}
+.msg h4{margin:0;font-size:14.5px}
+.msg em{display:block;color:var(--muted);font-size:13.5px;margin-top:2px}
+.msg ul{margin:2px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.msg a{text-decoration:none}
+.example-note{font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -107,7 +144,7 @@ footer{border-top:1px solid var(--line);padding-top:20px;font-size:14px;color:va
 <header>
   <span class="eyebrow">GitHub Actions for small, fast pull requests</span>
   <h1>Delivery Guardrails</h1>
-  <p class="lede">Two workflows you copy into your team's repos. One stops big or stale pull requests from merging. The other tells Slack when work is stuck before it reaches UAT.</p>
+  <p class="lede">Two workflows you copy into your team's repos. One stops big or stale pull requests from merging. The other tells Slack when work is stuck before it reaches UAT. Ages count working hours only, so nights and weekends never count against anyone.</p>
   <div class="links">
     <a class="btn" href="#setup-rules">Set it up</a>
     <a class="btn ghost" href="https://github.com/BaluRaut/delivery-guardrails">View the repo</a>
@@ -124,7 +161,7 @@ footer{border-top:1px solid var(--line);padding-top:20px;font-size:14px;color:va
       <span class="tag block">Blocks merging</span>
       <ul>
         <li>Fails a pull request that changes more than <strong>500 lines</strong>. Lock files, snapshots and generated code don't count.</li>
-        <li>Fails a pull request whose work started more than <strong>8 hours</strong> ago, re-checked every hour.</li>
+        <li>Fails a pull request whose work started more than <strong>8 working hours</strong> ago, re-checked every hour.</li>
         <li>The tech lead can allow one with the <span class="lbl">size-exception</span> or <span class="lbl">age-exception</span> label.</li>
       </ul>
     </div>
@@ -133,12 +170,45 @@ footer{border-top:1px solid var(--line);padding-top:20px;font-size:14px;color:va
       <h3>Delivery alerts</h3>
       <span class="tag alert">Posts to Slack</span>
       <ul>
-        <li>Pull requests open more than <strong>7 hours</strong> in your team's repos, drafts excluded.</li>
-        <li>Merged pull requests not on <strong>UAT</strong> within 7 hours.</li>
-        <li>Runs hourly in office hours. Without a webhook it prints the alerts in the run log, which is useful as a dry run.</li>
+        <li>Pull requests open more than <strong>6 working hours</strong>, grouped by who must act: reviewers or the author.</li>
+        <li>Merged pull requests not on <strong>UAT</strong> within 7 working hours, and a failed latest UAT deployment.</li>
+        <li>Repos with no UAT deployments recorded, so none go unwatched by accident.</li>
       </ul>
     </div>
   </div>
+</section>
+
+<section aria-labelledby="clock-h">
+  <span class="eyebrow">The clock</span>
+  <h2 id="clock-h">Only working hours count</h2>
+  <p>By default the clock runs 09:00–18:00 IST, Monday to Friday, and skips holidays you list. A pull request opened at 4pm gets 2 hours that day, then the clock resumes at 9am the next working day.</p>
+  <div class="clock" role="img" aria-label="Timeline: a pull request opened Friday at 4pm gets 2 hours on Friday, nothing on Saturday or Sunday, and 3 hours on Monday by noon, 5 working hours in total">
+    <div class="day"><b>Friday</b><div class="track"><div class="hours"></div><div class="count" style="left:calc(100%*16/24);width:calc(100%*2/24)"></div></div><span class="sum">2h</span></div>
+    <div class="day off"><b>Saturday</b><div class="track"></div><span class="sum">0h</span></div>
+    <div class="day off"><b>Sunday</b><div class="track"></div><span class="sum">0h</span></div>
+    <div class="day"><b>Monday</b><div class="track"><div class="hours"></div><div class="count" style="left:calc(100%*9/24);width:calc(100%*3/24)"></div></div><span class="sum">3h</span></div>
+    <div class="ticks"><span></span><div><span style="left:0">00</span><span style="left:calc(100%*9/24)">09</span><span style="left:calc(100%*16/24)">16</span><span style="left:calc(100%*18/24)">18</span><span style="left:100%">24</span></div><span class="total">= 5h</span></div>
+    <div class="legend"><span><i style="border:1.5px dashed var(--muted)"></i>Working hours</span><span><i style="background:var(--link)"></i>Counted: opened Friday 4pm, checked Monday noon</span></div>
+  </div>
+  <p>Change the hours, days, time zone and holidays with the settings <a href="#settings">below</a>, or set <code>AGE_CLOCK=calendar</code> to count every hour.</p>
+</section>
+
+<section aria-labelledby="how-h">
+  <span class="eyebrow">How it works</span>
+  <h2 id="how-h">From a pull request to a check or a Slack message</h2>
+  <div class="flow" role="img" aria-label="A pull request or the hourly schedule starts GitHub Actions, which runs the guardrail scripts at a pinned release; they read the GitHub API and post checks on the pull request or one Slack message">
+    <div class="node"><b>Pull request or hourly schedule</b><span>Weekdays, working hours</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>GitHub Actions</b><span>Fetches the scripts at a pinned release, <code>v2.0.0</code></span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="node"><b>GitHub API</b><span>Pull requests, reviews, files, deployments, every page</span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="outs">
+      <div class="node"><b>Checks on the pull request</b><span><code>pr-rules/size</code>, <code>pr-rules/age</code></span></div>
+      <div class="node"><b>One Slack message</b><span>Stuck work, grouped by who acts</span></div>
+    </div>
+  </div>
+  <p>No servers, no database, no dependencies: two small Node scripts and the built-in GitHub token. Your workflows pin a release, so updates here never change your checks until you choose to.</p>
 </section>
 
 <section aria-labelledby="looks">
@@ -148,16 +218,37 @@ footer{border-top:1px solid var(--line);padding-top:20px;font-size:14px;color:va
   <div class="mergebox" role="img" aria-label="Example merge box: the size check failed with 600 lines changed, the age check passed, and merging is blocked">
     <div class="mb-head"><span class="x" aria-hidden="true">✕</span><div><b>Merging is blocked</b><span>A required status check has failed.</span></div></div>
     <div class="check"><span class="dot fail" aria-hidden="true">✕</span><code>pr-rules/size</code><span class="desc">600 lines changed. Split it into PRs under 500 lines.</span><span class="req">Required</span></div>
-    <div class="check"><span class="dot pass" aria-hidden="true">✓</span><code>pr-rules/age</code><span class="desc">Started 0h ago (limit 8h)</span><span class="req">Required</span></div>
+    <div class="check"><span class="dot pass" aria-hidden="true">✓</span><code>pr-rules/age</code><span class="desc">0.5 working hours since work started (limit 8)</span><span class="req">Required</span></div>
     <div class="mb-foot"><button class="merge" type="button" disabled>Merge pull request</button><span>Add <span class="lbl">size-exception</span> and the check turns green: "600 lines changed; allowed by the size-exception label".</span></div>
   </div>
+</section>
+
+<section aria-labelledby="slack-h">
+  <span class="eyebrow">In Slack</span>
+  <h2 id="slack-h">One message, sorted by who should act</h2>
+  <div class="chat" aria-label="Example Slack message">
+    <span class="avatar" aria-hidden="true">DG</span>
+    <div class="msg">
+      <span class="who">Delivery alerts<small>11:00</small></span>
+      <div><h4>Pull requests open more than 6 working hours</h4>
+        <em>Waiting for a first review (reviewers to act)</em>
+        <ul><li><a href="#slack-h">orders-api#412</a> Add cancel button · 7.5h · by @asha · @ravi</li></ul>
+        <em>Changes requested (author to act)</em>
+        <ul><li><a href="#slack-h">orders-web#88</a> Refund banner · 9h · by @meera · @meera</li></ul></div>
+      <div><h4>Merged but not on uat after 7 working hours</h4>
+        <ul><li><a href="#slack-h">orders-api#405</a> Retry refunds · merged 8h ago</li></ul></div>
+      <div><h4>Latest uat deployment failed</h4>
+        <ul><li>refund-worker: deployment of 3f2a9c1 failed 1h ago</li></ul></div>
+    </div>
+  </div>
+  <p class="example-note">An example with made-up pull requests. The four stages are: waiting for a first review, waiting for approval, changes requested, and approved but not merged.</p>
 </section>
 
 <section aria-labelledby="setup-rules" id="setup-rules">
   <span class="eyebrow">Setup · in each repo</span>
   <h2>Block big or old pull requests</h2>
   <ol class="steps">
-    <li><div class="body"><h3>Copy the workflow</h3><p>Add <code>.github/workflows/pr-rules.yml</code> (shown <a href="#files">below</a>) to the repo's default branch. The hourly re-check only runs from there.</p></div></li>
+    <li><div class="body"><h3>Copy the workflow</h3><p>Copy <code>templates/pr-rules.yml</code> (shown <a href="#files">below</a>) to <code>.github/workflows/pr-rules.yml</code> on the repo's default branch. The hourly re-check only runs from there.</p></div></li>
     <li><div class="body"><h3>Create the exception labels</h3>
       <div class="snippet"><pre><code>gh label create size-exception --color FBCA04 --description "Allowed over the line limit; tech lead approved"
 gh label create age-exception  --color FBCA04 --description "Allowed over the age limit; tech lead approved"</code></pre></div></div></li>
@@ -183,25 +274,25 @@ JSON</code></pre></div></div></li>
   <span class="eyebrow">Setup · once, in one repo</span>
   <h2 id="setup-alerts">Alert on stuck work</h2>
   <ol class="steps">
-    <li><div class="body"><h3>Copy the workflow</h3><p>Add <code>.github/workflows/delivery-alerts.yml</code> to one of your team's repos.</p></div></li>
+    <li><div class="body"><h3>Copy the workflow</h3><p>Copy <code>templates/delivery-alerts.yml</code> to <code>.github/workflows/delivery-alerts.yml</code> in one of your team's repos.</p></div></li>
     <li><div class="body"><h3>List your team's repos</h3>
       <div class="snippet"><pre><code>gh variable set TEAM_REPOS --body "your-org/orders-api your-org/orders-web your-org/refund-worker"</code></pre></div></div></li>
     <li><div class="body"><h3>Add a read-only token</h3><p>Create a fine-grained token with access to only those repos and read-only Pull requests, Deployments and Contents. Save it as the secret <code>TEAM_READ_TOKEN</code>. If you watch only the repo the workflow lives in, skip this step.</p></div></li>
     <li><div class="body"><h3>Connect Slack</h3><p>Create an incoming webhook for your team channel and save it as the secret <code>SLACK_WEBHOOK</code>.</p></div></li>
-    <li><div class="body"><h3>Record UAT deployments</h3><p>If you deploy with GitHub Actions, give the UAT job <code>environment: uat</code> and GitHub records every deployment. With Jenkins, Argo CD or similar, add this step after a successful UAT deploy:</p>
+    <li><div class="body"><h3>Record UAT deployments</h3><p>If you deploy with GitHub Actions, give the UAT job <code>environment: uat</code> and GitHub records every deployment. With Jenkins, Argo CD or similar, add this step after each UAT deploy, using <code>state=failure</code> when it fails:</p>
       <div class="snippet"><pre><code>id=$(gh api -X POST "repos/$REPO/deployments" --input - --jq .id &lt;&lt;JSON
 {"ref": "$DEPLOYED_SHA", "environment": "uat", "auto_merge": false, "required_contexts": []}
 JSON
 )
 gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=success</code></pre></div></div></li>
-    <li><div class="body"><h3>Run it once</h3><p>Open the Actions tab, choose <strong>Delivery alerts</strong> and click <strong>Run workflow</strong>. After that it runs hourly, Monday to Friday, 08:30–18:30 IST.</p></div></li>
+    <li><div class="body"><h3>Run it once</h3><p>Open the Actions tab, choose <strong>Delivery alerts</strong> and click <strong>Run workflow</strong>. After that it runs hourly, Monday to Friday, 09:30–18:30 IST.</p></div></li>
   </ol>
 </section>
 
 <section aria-labelledby="files" id="files">
   <span class="eyebrow">The workflow files</span>
   <h2>Copy them straight from here</h2>
-  <p>Loaded live from the repo's <code>main</code> branch, so this is always the current version.</p>
+  <p>The templates, loaded live from the repo's <code>main</code> branch. Each fetches the scripts at a pinned release.</p>
   <div>
     <div class="tabs" role="tablist" aria-label="Workflow files">
       <button class="tab" role="tab" id="tab-rules" aria-selected="true" aria-controls="file" data-file="pr-rules.yml">pr-rules.yml</button>
@@ -209,44 +300,77 @@ gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=success</code></p
     </div>
     <div class="snippet file" id="file" role="tabpanel" aria-labelledby="tab-rules"><pre><code id="file-code">Loading…</code></pre></div>
   </div>
-  <div class="filebar"><span id="file-path">.github/workflows/pr-rules.yml</span><a id="file-link" href="https://github.com/BaluRaut/delivery-guardrails/blob/main/.github/workflows/pr-rules.yml">Open on GitHub</a></div>
+  <div class="filebar"><span id="file-path">templates/pr-rules.yml</span><a id="file-link" href="https://github.com/BaluRaut/delivery-guardrails/blob/main/templates/pr-rules.yml">Open on GitHub</a></div>
 </section>
 
 <section aria-labelledby="settings">
   <span class="eyebrow">Settings</span>
   <h2 id="settings">Change the limits without editing YAML</h2>
-  <p>Set these under Settings → Secrets and variables → Actions → Variables. Anything you don't set uses the default.</p>
+  <p>Set these under Settings → Secrets and variables → Actions → Variables. Anything you don't set uses the default. If you change the time zone, change the <code>cron</code> lines in the workflows too; cron runs in UTC.</p>
   <div class="tbl">
     <table>
       <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
       <tbody>
         <tr><td><code>MAX_LINES</code></td><td>500</td><td>Most changed lines in one pull request</td></tr>
-        <tr><td><code>MAX_AGE_HOURS</code></td><td>8</td><td>Most hours since the work started</td></tr>
+        <tr><td><code>MAX_AGE_HOURS</code></td><td>8</td><td>Most working hours since the work started before merging is blocked</td></tr>
         <tr><td><code>AGE_FROM</code></td><td><code>oldest-commit</code></td><td>Or <code>pr-opened</code>, a clock nobody can change</td></tr>
         <tr><td><code>IGNORE_PATHS</code></td><td>lock files, <code>.snap</code>, <code>generated/</code></td><td>Regular expression for files that don't count towards the limit</td></tr>
         <tr><td><code>TEAM_REPOS</code></td><td>this repo</td><td>Space-separated <code>owner/repo</code> list to watch</td></tr>
-        <tr><td><code>MAX_PR_HOURS</code></td><td>7</td><td>Alert on pull requests open longer than this</td></tr>
+        <tr><td><code>MAX_PR_HOURS</code></td><td>6</td><td>Alert on pull requests open longer than this; keep it below <code>MAX_AGE_HOURS</code> so the alert comes first</td></tr>
         <tr><td><code>MAX_UAT_HOURS</code></td><td>7</td><td>Alert on merged pull requests not on UAT after this</td></tr>
         <tr><td><code>UAT_ENVIRONMENT</code></td><td><code>uat</code></td><td>Deployment environment name to watch</td></tr>
+        <tr><td><code>AGE_CLOCK</code></td><td><code>working</code></td><td><code>working</code>, or <code>calendar</code> to count every hour</td></tr>
+        <tr><td><code>WORK_TIMEZONE</code></td><td><code>Asia/Kolkata</code></td><td>Any IANA time zone, such as <code>Europe/London</code></td></tr>
+        <tr><td><code>WORK_START</code> / <code>WORK_END</code></td><td>09:00 / 18:00</td><td>Working hours, 24-hour clock</td></tr>
+        <tr><td><code>WORK_DAYS</code></td><td><code>Mon,Tue,Wed,Thu,Fri</code></td><td>Working days</td></tr>
+        <tr><td><code>HOLIDAYS</code></td><td>none</td><td>Dates to skip, such as <code>2026-12-25,2027-01-26</code></td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<section aria-labelledby="advice">
-  <span class="eyebrow">Before you switch on the age rule</span>
-  <h2 id="advice">Three things to know</h2>
+<section aria-labelledby="not-h">
+  <span class="eyebrow">On purpose</span>
+  <h2 id="not-h">What it doesn't measure</h2>
   <div class="advice">
-    <div><h3>Clock hours include nights</h3><p>Work started at 5pm and opened as a pull request the next morning is already 16 hours old. Consider 24 hours, or start with the age limit as an alert only.</p></div>
-    <div><h3>Authors can't fix slow reviews</h3><p>A pull request waiting on reviewers still turns red at hour 8. Block on size, which the author controls, and alert on age so reviewers act.</p></div>
-    <div><h3>Commit dates can be changed</h3><p><code>git commit --amend --reset-author</code> resets them. Set <code>AGE_FROM=pr-opened</code> if that matters.</p></div>
+    <div><h3>People</h3><p>It reports stuck work, not individuals. Don't rank anyone by alerts, and don't measure "pull requests per developer".</p></div>
+    <div><h3>Quality</h3><p>A small, fast pull request can still be wrong. Code review and tests stay essential.</p></div>
+    <div><h3>Production</h3><p>It stops at UAT. Track production with your DORA metrics: deployment frequency, lead time, change failure rate and recovery time.</p></div>
   </div>
-  <h3>A sensible rollout</h3>
-  <ol class="rollout">
-    <li>Turn on the 500-line block.</li>
-    <li>Run the age limit as an alert for 2–3 weeks.</li>
-    <li>Make it blocking once most pull requests already merge in time.</li>
-  </ol>
+</section>
+
+<section aria-labelledby="trouble-h">
+  <span class="eyebrow">Troubleshooting</span>
+  <h2 id="trouble-h">When something looks wrong</h2>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause and fix</th></tr></thead>
+      <tbody>
+        <tr><td><code>pr-rules/size</code> isn't offered as a required check</td><td>The checks haven't reported yet. Open a pull request first.</td></tr>
+        <tr><td>No checks on pull requests from forks</td><td>The built-in token is read-only for forks. Work in branches of the same repo.</td></tr>
+        <tr><td>A repo is listed under "No uat deployments recorded"</td><td>No successful deployment with that environment name. Check the name and that your pipeline records deployments.</td></tr>
+        <tr><td><code>GitHub GET … returned 404</code></td><td><code>TEAM_READ_TOKEN</code> can't see that repo. Add it to the token.</td></tr>
+        <tr><td><code>Slack returned 404: no_service</code></td><td>The webhook was removed or mistyped. Create a new one and update the secret.</td></tr>
+        <tr><td>The age check doesn't turn red overnight</td><td>Expected: the working clock doesn't move outside working hours.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="rollout-h">
+  <span class="eyebrow">Rollout</span>
+  <h2 id="rollout-h">Four weeks to switch it on</h2>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Week</th><th>Step</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Install both workflows on one squad's repos. Require the size check; leave the age check visible but not required.</td></tr>
+        <tr><td>2</td><td>Watch how often pull requests cross the limits. Adjust <code>IGNORE_PATHS</code> and the hours.</td></tr>
+        <tr><td>3</td><td>Connect Slack, and agree who acts on each alert stage.</td></tr>
+        <tr><td>4</td><td>Review the numbers with the team, then require <code>pr-rules/age</code> too.</td></tr>
+      </tbody>
+    </table>
+  </div>
 </section>
 
 <section aria-labelledby="tested">
@@ -273,8 +397,8 @@ gh api -X POST "repos/$REPO/deployments/$id/statuses" -f state=success</code></p
 </div>
 
 <script>
-const RAW = 'https://raw.githubusercontent.com/BaluRaut/delivery-guardrails/main/.github/workflows/'
-const BLOB = 'https://github.com/BaluRaut/delivery-guardrails/blob/main/.github/workflows/'
+const RAW = 'https://raw.githubusercontent.com/BaluRaut/delivery-guardrails/main/templates/'
+const BLOB = 'https://github.com/BaluRaut/delivery-guardrails/blob/main/templates/'
 const cache = {}
 
 // A copy button on every snippet
@@ -298,7 +422,7 @@ document.querySelectorAll('.snippet').forEach((box) => {
 
 async function showFile(name) {
   const code = document.getElementById('file-code')
-  document.getElementById('file-path').textContent = `.github/workflows/${name}`
+  document.getElementById('file-path').textContent = `templates/${name}`
   document.getElementById('file-link').href = BLOB + name
   code.textContent = 'Loading…'
   try {
