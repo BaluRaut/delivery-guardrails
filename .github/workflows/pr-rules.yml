@@ -1,0 +1,77 @@
+# Blocks merging a pull request that is too big or has been open too long.
+# Make the two checks it reports (pr-rules/size and pr-rules/age) required in a
+# branch ruleset; see README.md. Settings come from repository variables.
+name: PR rules
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  schedule:
+    - cron: "0 * * * *"   # hourly: age changes without any new push, so re-check open PRs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+env:
+  MAX_LINES: ${{ vars.MAX_LINES || 500 }}
+  MAX_AGE_HOURS: ${{ vars.MAX_AGE_HOURS || 8 }}
+  AGE_FROM: ${{ vars.AGE_FROM || 'oldest-commit' }}   # or 'pr-opened'
+  # Files that don't count towards the line limit (a regular expression on the path)
+  IGNORE_PATHS: ${{ vars.IGNORE_PATHS || '(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$|\.snap$|(^|/)generated/' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check size and age
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          now=$(date -u +%s)
+          prs=${PR:-$(gh pr list -R "$REPO" --state open --json number --jq '.[].number')}
+          echo "| PR | Lines | Size | Age (h) | Age check |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          for n in $prs; do
+            pr=$(gh pr view "$n" -R "$REPO" --json headRefOid,labels,additions,deletions,files,commits,createdAt)
+            sha=$(jq -r .headRefOid <<<"$pr")
+            labels=",$(jq -r '[.labels[].name] | join(",")' <<<"$pr"),"
+
+            ignored=$(jq --arg ig "$IGNORE_PATHS" '[.files[] | select(.path | test($ig)) | .additions + .deletions] | add // 0' <<<"$pr")
+            lines=$(( $(jq '.additions + .deletions' <<<"$pr") - ignored ))
+            if [ "$AGE_FROM" = "pr-opened" ]; then
+              started=$(jq -r .createdAt <<<"$pr")
+            else
+              started=$(jq -r '[.commits[].authoredDate] | min' <<<"$pr")
+            fi
+            hours=$(( (now - $(date -u -d "$started" +%s)) / 3600 ))
+
+            size=success; size_msg="$lines lines changed (limit $MAX_LINES)"
+            if [ "$lines" -gt "$MAX_LINES" ]; then
+              if [[ "$labels" == *",size-exception,"* ]]; then
+                size_msg="$lines lines changed; allowed by the size-exception label"
+              else
+                size=failure; size_msg="$lines lines changed. Split it into PRs under $MAX_LINES lines."
+              fi
+            fi
+
+            age=success; age_msg="Started ${hours}h ago (limit ${MAX_AGE_HOURS}h)"
+            if [ "$hours" -ge "$MAX_AGE_HOURS" ]; then
+              if [[ "$labels" == *",age-exception,"* ]]; then
+                age_msg="Started ${hours}h ago; allowed by the age-exception label"
+              else
+                age=failure; age_msg="Started ${hours}h ago. Merge or split work within ${MAX_AGE_HOURS}h."
+              fi
+            fi
+
+            gh api -X POST "repos/$REPO/statuses/$sha" -f state="$size" -f context="pr-rules/size" -f description="$size_msg" > /dev/null
+            gh api -X POST "repos/$REPO/statuses/$sha" -f state="$age" -f context="pr-rules/age" -f description="$age_msg" > /dev/null
+            echo "#$n: size $size ($lines lines), age $age (${hours}h)"
+            echo "| #$n | $lines | $size | $hours | $age |" >> "$GITHUB_STEP_SUMMARY"
+          done
